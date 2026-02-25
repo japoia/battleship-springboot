@@ -14,6 +14,8 @@ import com.example.battleship.service.dto.PlaceShipRequest;
 import jakarta.servlet.http.HttpSession;
 import java.security.SecureRandom;
 import java.util.Deque;
+import java.util.List;
+import java.util.ArrayList;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -101,26 +103,41 @@ public final class GameService {
 
     FireResult playerShot = gs.computerBoard.fire(req.x, req.y);
     if (playerShot.outcome() == FireResult.Outcome.INVALID || playerShot.outcome() == FireResult.Outcome.ALREADY_SHOT) {
-      return new FireResponse(playerShot, -1, -1, null, toState(gs));
+      return new FireResponse(playerShot, List.of(), toState(gs));
     }
 
     if (playerShot.allShipsSunk()) {
       gs.winner = "PLAYER";
       gs.phase = Phase.FINISHED;
-      return new FireResponse(playerShot, -1, -1, null, toState(gs));
+      return new FireResponse(playerShot, List.of(), toState(gs));
     }
 
-    // Computer shoots once (simple alternating turns).
-    Coord cShot = pickComputerShot(gs);
-    FireResult computerShot = gs.playerBoard.fire(cShot.x(), cShot.y());
-    updateComputerTargeting(gs, cShot, computerShot);
-
-    if (computerShot.allShipsSunk()) {
-      gs.winner = "COMPUTER";
-      gs.phase = Phase.FINISHED;
+    // Player hit - gets another turn, computer doesn't shoot
+    if (playerShot.outcome() == FireResult.Outcome.HIT) {
+      return new FireResponse(playerShot, List.of(), toState(gs));
     }
 
-    return new FireResponse(playerShot, cShot.x(), cShot.y(), computerShot, toState(gs));
+    // Player missed - computer gets to shoot, and continues shooting if it hits
+    List<FireResponse.ComputerShot> computerShots = new ArrayList<>();
+    while (true) {
+      Coord cShot = pickComputerShot(gs);
+      FireResult computerShot = gs.playerBoard.fire(cShot.x(), cShot.y());
+      updateComputerTargeting(gs, cShot, computerShot);
+      computerShots.add(new FireResponse.ComputerShot(cShot.x(), cShot.y(), computerShot));
+
+      if (computerShot.allShipsSunk()) {
+        gs.winner = "COMPUTER";
+        gs.phase = Phase.FINISHED;
+        return new FireResponse(playerShot, computerShots, toState(gs));
+      }
+
+      // Computer missed - end turn
+      if (computerShot.outcome() == FireResult.Outcome.MISS) {
+        return new FireResponse(playerShot, computerShots, toState(gs));
+      }
+
+      // Computer hit - continue shooting (loop to get another turn)
+    }
   }
 
   // ---------------- internals ----------------

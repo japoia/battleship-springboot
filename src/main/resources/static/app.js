@@ -189,25 +189,50 @@ function render() {
 
    // Render computer board - use full view if showComputerBoardFull is true
    const boardToRender = showComputerBoardFull ? state.computerBoardFull : state.computerBoard;
-   renderGrid(el("computerGrid"), boardToRender, async (x, y) => {
-    if (state.phase !== "PLAY") return;
-    try {
-      const res = await api("/api/game/fire", "POST", { x, y });
-      state = res.state;
-      const p = res.playerShot;
-      let msg = `Sina: ${p.outcome}`;
-      if (p.outcome === "HIT" && p.shipSunk) msg += " (uppus)";
-      if (res.computerShot) {
-        const c = res.computerShot;
-        msg += ` | Arvuti (${res.computerShotX},${res.computerShotY}): ${c.outcome}`;
-        if (c.outcome === "HIT" && c.shipSunk) msg += " (uppus)";
-      }
-      setStatus(msg);
-      render();
-    } catch (e) {
-      setStatus(e.message);
-    }
-  });
+    renderGrid(el("computerGrid"), boardToRender, async (x, y) => {
+     if (state.phase !== "PLAY") return;
+     try {
+       const res = await api("/api/game/fire", "POST", { x, y });
+       state = res.state;
+       const p = res.playerShot;
+       let msg = `Sina: ${p.outcome}`;
+       if (p.outcome === "HIT" && p.shipSunk) msg += " (uppus)";
+       setStatus(msg);
+       render();
+       
+       // Play sound if game ended
+       if (state.winner) {
+         playGameEndSound();
+       }
+       
+       // Animate computer shots if there are any
+       if (res.computerShots && res.computerShots.length > 0) {
+         for (let i = 0; i < res.computerShots.length; i++) {
+           const computerShot = res.computerShots[i];
+           // Wait for animation delay
+           await new Promise(resolve => setTimeout(resolve, 1000));
+           // Update status with computer shot information
+           let computerMsg = `Sina: ${p.outcome}`;
+           computerMsg += ` | Arvuti (${computerShot.x},${computerShot.y}): ${computerShot.result.outcome}`;
+           if (computerShot.result.outcome === "HIT" && computerShot.result.shipSunk) {
+             computerMsg += " (uppus)";
+           }
+           setStatus(computerMsg);
+           // Refresh state
+           state = await api("/api/game/state");
+           render();
+           
+           // Play sound if game ended after this computer shot
+           if (state.winner) {
+             playGameEndSound();
+             break; // No more shots after game ends
+           }
+         }
+       }
+     } catch (e) {
+       setStatus(e.message);
+     }
+   });
 }
 
 async function init() {
@@ -254,7 +279,30 @@ async function init() {
     render();
   };
 
-  document.addEventListener("keydown", (e) => {
+  // Game end sound effect
+function playGameEndSound() {
+  // Create audio context
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // Create oscillator for the sound
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  
+  // Configure the sound
+  oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+  oscillator.frequency.exponentialRampToValueAtTime(1046.50, audioContext.currentTime + 0.2); // C6
+  
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+  
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + 0.5);
+}
+
+document.addEventListener("keydown", (e) => {
     if (e.key === "Shift" && !e.repeat) {
       orientation = (orientation === "H") ? "V" : "H";
       syncControls();
