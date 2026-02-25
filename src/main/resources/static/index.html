@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Laevade pommitamine (Spring Boot)</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a2b;
+      --text: #e7eefc;
+      --muted: #9fb0d0;
+      --grid: rgba(255,255,255,0.12);
+       --water: #0f2244;
+  --ship: #ffd700;
+      --unknown: #12213a;
+      --miss: #1e3b66;
+      --hit: #b43a3a;
+      --sunk: #7b1f1f;
+      --btn: #1b2b4c;
+      --btn2: #243a66;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 20% 0%, #172747 0%, var(--bg) 55%);
+      color: var(--text);
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 18px; }
+    .top {
+      display: flex; gap: 12px; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .title { font-weight: 700; letter-spacing: 0.2px; }
+    .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .panel {
+      background: color-mix(in srgb, var(--panel) 92%, black);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+    }
+    .controls {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    button, select {
+      background: var(--btn);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+    button:hover, select:hover { background: var(--btn2); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { color: var(--muted); font-size: 13px; margin-top: 10px; min-height: 20px; }
+    .boards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .boardTitle { font-weight: 700; margin-bottom: 10px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(10, 28px);
+      grid-template-rows: repeat(10, 28px);
+      gap: 4px;
+      user-select: none;
+    }
+    .cell {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      border: 1px solid var(--grid);
+      background: var(--unknown);
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      transition: transform 60ms ease;
+    }
+    .cell:hover { transform: translateY(-1px); }
+    .cell.water { background: var(--water); }
+    .cell.ship { background: var(--ship); }
+    .cell.unknown { background: var(--unknown); }
+    .cell.miss { background: var(--miss); }
+    .cell.hit { background: var(--hit); }
+    .cell.sunk { background: var(--sunk); }
+    .cell.preview-ok { outline: 2px solid rgba(68, 209, 122, 0.95); outline-offset: -2px; }
+    .cell.preview-bad { outline: 2px solid rgba(255, 88, 88, 0.95); outline-offset: -2px; }
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; color: var(--muted); font-size: 12px; }
+    .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; border: 1px solid rgba(255,255,255,0.15); }
+    .row { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; }
+    .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    @media (max-width: 880px) {
+      .boards { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: repeat(10, 26px); grid-template-rows: repeat(10, 26px); }
+      .cell { width: 26px; height: 26px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="title">Laevade pommitamine — kasutaja vs arvuti</div>
+        <div class="subtitle">10×10, laevad ei tohi kokku puutuda (ka nurkadega).</div>
+      </div>
+         <div class="controls">
+           <button id="newBtn">Uus mäng</button>
+           <button id="autoBtn">Pane ülejäänud automaatselt</button>
+           <button id="startBtn">Alusta mängu</button>
+           <button id="toggleBtn" onclick="toggleComputerBoard()">Ava</button>
+         </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <label for="lenSel">Laeva pikkus:</label>
+        <select id="lenSel"></select>
+        <button id="oriBtn">Suund: H</button>
+        <span id="fleetInfo" class="status"></span>
+      </div>
+      <div id="status" class="status"></div>
+
+      <div class="boards">
+        <div>
+          <div class="boardTitle">Sinu laud</div>
+          <div id="playerGrid" class="grid" aria-label="Player board"></div>
+          <div class="note">Paigutamisel kliki ruudule, et panna valitud laev. Suunda saad muuta nupuga või hoia all <b>Shift</b>.</div>
+        </div>
+        <div>
+          <div class="boardTitle">Arvuti laud</div>
+          <div id="computerGrid" class="grid" aria-label="Computer board"></div>
+          <div class="note">Mängu ajal kliki siin, et tulistada.</div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot" style="background: var(--unknown)"></i>teadmata</span>
+        <span><i class="dot" style="background: var(--water)"></i>vesi</span>
+        <span><i class="dot" style="background: var(--ship)"></i>laev</span>
+        <span><i class="dot" style="background: var(--miss)"></i>mõõda</span>
+        <span><i class="dot" style="background: var(--hit)"></i>tabamus</span>
+        <span><i class="dot" style="background: var(--sunk)"></i>uppunud</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=2"></script>
+</body>
+</html>
+
