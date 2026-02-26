@@ -12,7 +12,7 @@ public final class Board {
   private final boolean isComputerBoard; // Flag to indicate if this is computer's board
 
   private final int[][] shipAt = new int[SIZE][SIZE]; // -1 none, otherwise shipId
-  private final boolean[][] shotAt = new boolean[SIZE][SIZE];
+  private final int[][] shotTurn = new int[SIZE][SIZE]; // -1 if not shot, otherwise turn number
   private final Map<Integer, Ship> ships = new HashMap<>();
   private int nextShipId = 1;
 
@@ -26,12 +26,18 @@ public final class Board {
     this.isComputerBoard = isComputerBoard;
     for (int y = 0; y < SIZE; y++) {
       Arrays.fill(shipAt[y], -1);
+      Arrays.fill(shotTurn[y], -1);
     }
   }
 
   public boolean wasShot(int x, int y) {
     if (!inBounds(x, y)) return false;
-    return shotAt[y][x];
+    return shotTurn[y][x] != -1;
+  }
+
+  public int shotTurn(int x, int y) {
+    if (!inBounds(x, y)) return -1;
+    return shotTurn[y][x];
   }
 
   public Optional<Ship> shipAt(int x, int y) {
@@ -99,15 +105,15 @@ public final class Board {
     return true;
   }
 
-  public FireResult fire(int x, int y) {
+  public FireResult fire(int x, int y, int turnNumber) {
     if (!inBounds(x, y)) {
       return new FireResult(FireResult.Outcome.INVALID, false, false);
     }
-    if (shotAt[y][x]) {
+    if (shotTurn[y][x] != -1) {
       return new FireResult(FireResult.Outcome.ALREADY_SHOT, false, false);
     }
 
-    shotAt[y][x] = true;
+    shotTurn[y][x] = turnNumber;
     int id = shipAt[y][x];
     if (id == -1) {
       return new FireResult(FireResult.Outcome.MISS, false, false);
@@ -176,11 +182,11 @@ public final class Board {
     return false;
   }
 
-  // Helper method to check if a ship's footprint contains any shot cells
+   // Helper method to check if a ship's footprint contains any shot cells
   private boolean containsShotCells(int x, int y, int length, Orientation orientation) {
     List<Coord> cells = footprintFor(x, y, length, orientation);
     for (Coord cell : cells) {
-      if (shotAt[cell.y()][cell.x()]) {
+      if (shotTurn[cell.y()][cell.x()] != -1) {
         return true;
       }
     }
@@ -206,7 +212,7 @@ public final class Board {
     CellView[][] view = new CellView[SIZE][SIZE];
     for (int y = 0; y < SIZE; y++) {
       for (int x = 0; x < SIZE; x++) {
-        boolean shot = shotAt[y][x];
+        boolean shot = shotTurn[y][x] != -1;
         int id = shipAt[y][x];
         if (id == -1) {
           view[y][x] = shot ? CellView.MISS : CellView.WATER;
@@ -227,7 +233,7 @@ public final class Board {
     CellView[][] view = new CellView[SIZE][SIZE];
     for (int y = 0; y < SIZE; y++) {
       for (int x = 0; x < SIZE; x++) {
-        if (!shotAt[y][x]) {
+        if (shotTurn[y][x] == -1) {
           view[y][x] = CellView.UNKNOWN;
           continue;
         }
@@ -241,6 +247,14 @@ public final class Board {
       }
     }
     return view;
+  }
+
+  public int[][] shotTurnMatrix() {
+    int[][] copy = new int[SIZE][SIZE];
+    for (int y = 0; y < SIZE; y++) {
+      System.arraycopy(shotTurn[y], 0, copy[y], 0, SIZE);
+    }
+    return copy;
   }
 
   public enum CellView {

@@ -101,7 +101,8 @@ public final class GameService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Game finished.");
     }
 
-    FireResult playerShot = gs.computerBoard.fire(req.x, req.y);
+     gs.turnNumber++;
+     FireResult playerShot = gs.computerBoard.fire(req.x, req.y, gs.turnNumber);
     if (playerShot.outcome() == FireResult.Outcome.INVALID || playerShot.outcome() == FireResult.Outcome.ALREADY_SHOT) {
       return new FireResponse(playerShot, List.of(), toState(gs));
     }
@@ -121,7 +122,7 @@ public final class GameService {
     List<FireResponse.ComputerShot> computerShots = new ArrayList<>();
     while (true) {
       Coord cShot = pickComputerShot(gs);
-      FireResult computerShot = gs.playerBoard.fire(cShot.x(), cShot.y());
+       FireResult computerShot = gs.playerBoard.fire(cShot.x(), cShot.y(), gs.turnNumber);
       updateComputerTargeting(gs, cShot, computerShot);
       computerShots.add(new FireResponse.ComputerShot(cShot.x(), cShot.y(), computerShot));
 
@@ -131,12 +132,11 @@ public final class GameService {
         return new FireResponse(playerShot, computerShots, toState(gs));
       }
 
-      // Computer missed - end turn
       if (computerShot.outcome() == FireResult.Outcome.MISS) {
         return new FireResponse(playerShot, computerShots, toState(gs));
       }
 
-      // Computer hit - continue shooting (loop to get another turn)
+      // If it's a hit, continue shooting
     }
   }
 
@@ -243,6 +243,8 @@ public final class GameService {
     String[][] player = toStrings(gs.playerBoard.viewForOwner());
     String[][] computer = toStrings(gs.phase == Phase.FINISHED ? gs.computerBoard.viewForOwner() : gs.computerBoard.viewForOpponent());
     String[][] computerFull = toStrings(gs.computerBoard.viewForOwner()); // Always include full computer board
+    int[][] playerShotTurns = gs.playerBoard.shotTurnMatrix();
+    int[][] computerShotTurns = gs.computerBoard.shotTurnMatrix();
 
     return new GameStateResponse(
         gs.phase,
@@ -250,6 +252,9 @@ public final class GameService {
         player,
         computer,
         computerFull,
+        playerShotTurns,
+        computerShotTurns,
+        gs.turnNumber,
         FleetRules.requiredCountsByLength(),
         gs.playerFleet.placedCounts(),
         gs.playerFleet.isComplete()

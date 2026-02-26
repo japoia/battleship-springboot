@@ -5,7 +5,7 @@ let showComputerBoardFull = false;
 const el = (id) => document.getElementById(id);
 
 async function api(path, method = "GET", body = null) {
-  const opts = { method, headers: {} };
+  const opts = { method, headers: {}, credentials: 'same-origin' };
   if (body !== null) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
@@ -82,8 +82,9 @@ function clearPreview(gridEl) {
   }
 }
 
-function renderGrid(gridEl, board, onClick, onHover = null) {
+function renderGrid(gridEl, board, shotTurns, onClick, onHover = null) {
   console.log("Rendering grid with board:", board);
+  console.log("Rendering grid with shotTurns:", shotTurns);
   gridEl.innerHTML = "";
   for (let y = 0; y < 10; y++) {
     for (let x = 0; x < 10; x++) {
@@ -92,7 +93,14 @@ function renderGrid(gridEl, board, onClick, onHover = null) {
       d.className = `cell ${cellClass(cellType)}`;
       d.dataset.x = x;
       d.dataset.y = y;
-      d.textContent = ""; // Ensure no text is shown
+      
+      // Add turn number to cell if it was shot
+      if (shotTurns && shotTurns[y][x] > 0) {
+        d.textContent = shotTurns[y][x];
+      } else {
+        d.textContent = "";
+      }
+      
       d.addEventListener("click", () => onClick(x, y));
       if (onHover) {
         d.addEventListener("mouseenter", () => onHover(x, y));
@@ -165,11 +173,13 @@ function render() {
   if (!state) return;
 
   console.log("Rendering with state:", state);
+  console.log("playerShotTurns:", state.playerShotTurns);
+  console.log("computerShotTurns:", state.computerShotTurns);
   updateLengthSelect();
   syncControls();
 
   const playerGrid = el("playerGrid");
-  renderGrid(playerGrid, state.playerBoard, async (x, y) => {
+  renderGrid(playerGrid, state.playerBoard, state.playerShotTurns, async (x, y) => {
     if (state.phase !== "PLACING") return;
     const len = Number(el("lenSel").value);
     try {
@@ -189,7 +199,7 @@ function render() {
 
    // Render computer board - use full view if showComputerBoardFull is true
    const boardToRender = showComputerBoardFull ? state.computerBoardFull : state.computerBoard;
-    renderGrid(el("computerGrid"), boardToRender, async (x, y) => {
+     renderGrid(el("computerGrid"), boardToRender, state.computerShotTurns, async (x, y) => {
      if (state.phase !== "PLAY") return;
      try {
        const res = await api("/api/game/fire", "POST", { x, y });
@@ -205,53 +215,102 @@ function render() {
          playGameEndSound();
        }
        
-       // Animate computer shots if there are any
-       if (res.computerShots && res.computerShots.length > 0) {
-         for (let i = 0; i < res.computerShots.length; i++) {
-           const computerShot = res.computerShots[i];
-           // Wait for animation delay
-           await new Promise(resolve => setTimeout(resolve, 1000));
-           // Update status with computer shot information
-           let computerMsg = `Sina: ${p.outcome}`;
-           computerMsg += ` | Arvuti (${computerShot.x},${computerShot.y}): ${computerShot.result.outcome}`;
-           if (computerShot.result.outcome === "HIT" && computerShot.result.shipSunk) {
-             computerMsg += " (uppus)";
-           }
-           setStatus(computerMsg);
-           // Refresh state
-           state = await api("/api/game/state");
-           render();
-           
-           // Play sound if game ended after this computer shot
-           if (state.winner) {
-             playGameEndSound();
-             break; // No more shots after game ends
-           }
-         }
-       }
+        // Animate computer shots if there are any
+         if (res.computerShots && res.computerShots.length > 0) {
+           for (let i = 0; i < res.computerShots.length; i++) {
+             const computerShot = res.computerShots[i];
+             // Wait for animation delay
+             await new Promise(resolve => setTimeout(resolve, 1000));
+             // Update status with computer shot information
+             let computerMsg = `Sina: ${p.outcome}`;
+             computerMsg += ` | Arvuti (${computerShot.x},${computerShot.y}): ${computerShot.result.outcome}`;
+             if (computerShot.result.outcome === "HIT" && computerShot.result.shipSunk) {
+               computerMsg += " (uppus)";
+             }
+             setStatus(computerMsg);
+             // Update the board to show the computer shot
+             // We don't need to refresh the entire state from the server
+             // Just update the player's board cell where the computer shot
+             if (computerShot.result.outcome === "HIT") {
+               state.playerBoard[computerShot.y][computerShot.x] = "HIT";
+               if (computerShot.result.shipSunk) {
+                 state.playerBoard[computerShot.y][computerShot.x] = "SUNK";
+               }
+             } else if (computerShot.result.outcome === "MISS") {
+               state.playerBoard[computerShot.y][computerShot.x] = "MISS";
+             }
+             // Update shot turn number
+             state.playerShotTurns[computerShot.y][computerShot.x] = res.state.turnNumber;
+             render();
+            
+            // Play sound if game ended after this computer shot
+            if (state.winner) {
+              playGameEndSound();
+              break; // No more shots after game ends
+            }
+          }
+        }
      } catch (e) {
        setStatus(e.message);
      }
    });
 }
 
+// Game end sound effect
+function playGameEndSound() {
+  // Create audio context
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // Create oscillator for the sound
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  
+  // Configure the sound
+  oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+  oscillator.frequency.exponentialRampToValueAtTime(1046.50, audioContext.currentTime + 0.2); // C6
+  
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+  
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + 0.5);
+}
+
 async function init() {
+  console.log("DOM ready");
+  // Wait for DOM to be fully loaded
+  if (document.readyState !== "complete") {
+    await new Promise((resolve) => window.addEventListener("load", resolve));
+  }
+  console.log("Initializing app...");
+  console.log("newBtn element:", el("newBtn"));
+  
   el("newBtn").addEventListener("click", async () => {
+    console.log("newBtn clicked");
     try {
       state = await api("/api/game/new", "POST");
+      console.log("New game state:", state);
       setStatus("Uus mäng alustatud.");
       render();
     } catch (e) {
+      console.error("Error starting new game:", e);
       setStatus(e.message);
     }
   });
 
-  el("autoBtn").addEventListener("click", async () => {
+  console.log("autoBtn element:", el("autoBtn"));
+  el("autoBtn").addEventListener("click", async (event) => {
+    console.log("autoBtn clicked event:", event);
     try {
       state = await api("/api/game/auto-place", "POST");
+      console.log("Auto-place state:", state);
       setStatus("Paigutasin ülejäänud automaatselt.");
       render();
     } catch (e) {
+      console.error("Error auto-placing ships:", e);
       setStatus(e.message);
     }
   });
@@ -278,29 +337,6 @@ async function init() {
     toggleBtn.textContent = showComputerBoardFull ? "Sule" : "Ava";
     render();
   };
-
-  // Game end sound effect
-function playGameEndSound() {
-  // Create audio context
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // Create oscillator for the sound
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
-  
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
-  
-  // Configure the sound
-  oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
-  oscillator.frequency.exponentialRampToValueAtTime(1046.50, audioContext.currentTime + 0.2); // C6
-  
-  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-  
-  oscillator.start(audioContext.currentTime);
-  oscillator.stop(audioContext.currentTime + 0.5);
-}
 
 document.addEventListener("keydown", (e) => {
     if (e.key === "Shift" && !e.repeat) {
