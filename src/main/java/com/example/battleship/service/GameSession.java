@@ -10,7 +10,8 @@ import java.util.Deque;
 public final class GameSession {
   public Phase phase = Phase.PLACING;
   public String winner = null; // "PLAYER" or "COMPUTER"
-  public int turnNumber = 0; // Track current turn number
+  public int playerTurnNumber = 0; // Track player's turn number
+  public int computerTurnNumber = 0; // Track computer's turn number
 
   public Board playerBoard = new Board();
   public Board computerBoard = new Board();

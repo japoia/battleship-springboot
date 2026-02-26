@@ -9,7 +9,7 @@ public record FireResponse(
     List<ComputerShot> computerShots,
     GameStateResponse state
 ) {
-    public record ComputerShot(int x, int y, FireResult result) {
+    public record ComputerShot(int x, int y, FireResult result, int turnNumber) {
     }
 }
 

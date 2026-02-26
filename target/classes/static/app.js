@@ -239,8 +239,8 @@ function render() {
              } else if (computerShot.result.outcome === "MISS") {
                state.playerBoard[computerShot.y][computerShot.x] = "MISS";
              }
-             // Update shot turn number
-             state.playerShotTurns[computerShot.y][computerShot.x] = res.state.turnNumber;
+              // Update shot turn number
+              state.playerShotTurns[computerShot.y][computerShot.x] = computerShot.turnNumber;
              render();
             
             // Play sound if game ended after this computer shot

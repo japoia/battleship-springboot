@@ -101,30 +101,31 @@ public final class GameService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Game finished.");
     }
 
-     gs.turnNumber++;
-     FireResult playerShot = gs.computerBoard.fire(req.x, req.y, gs.turnNumber);
-    if (playerShot.outcome() == FireResult.Outcome.INVALID || playerShot.outcome() == FireResult.Outcome.ALREADY_SHOT) {
-      return new FireResponse(playerShot, List.of(), toState(gs));
-    }
+     gs.playerTurnNumber++;
+      FireResult playerShot = gs.computerBoard.fire(req.x, req.y, gs.playerTurnNumber);
+     if (playerShot.outcome() == FireResult.Outcome.INVALID || playerShot.outcome() == FireResult.Outcome.ALREADY_SHOT) {
+       return new FireResponse(playerShot, List.of(), toState(gs));
+     }
 
-    if (playerShot.allShipsSunk()) {
-      gs.winner = "PLAYER";
-      gs.phase = Phase.FINISHED;
-      return new FireResponse(playerShot, List.of(), toState(gs));
-    }
+     if (playerShot.allShipsSunk()) {
+       gs.winner = "PLAYER";
+       gs.phase = Phase.FINISHED;
+       return new FireResponse(playerShot, List.of(), toState(gs));
+     }
 
-    // Player hit - gets another turn, computer doesn't shoot
-    if (playerShot.outcome() == FireResult.Outcome.HIT) {
-      return new FireResponse(playerShot, List.of(), toState(gs));
-    }
+     // Player hit - gets another turn, computer doesn't shoot
+     if (playerShot.outcome() == FireResult.Outcome.HIT) {
+       return new FireResponse(playerShot, List.of(), toState(gs));
+     }
 
-    // Player missed - computer gets to shoot, and continues shooting if it hits
-    List<FireResponse.ComputerShot> computerShots = new ArrayList<>();
-    while (true) {
-      Coord cShot = pickComputerShot(gs);
-       FireResult computerShot = gs.playerBoard.fire(cShot.x(), cShot.y(), gs.turnNumber);
-      updateComputerTargeting(gs, cShot, computerShot);
-      computerShots.add(new FireResponse.ComputerShot(cShot.x(), cShot.y(), computerShot));
+     // Player missed - computer gets to shoot, and continues shooting if it hits
+     List<FireResponse.ComputerShot> computerShots = new ArrayList<>();
+     while (true) {
+       Coord cShot = pickComputerShot(gs);
+       gs.computerTurnNumber++;
+        FireResult computerShot = gs.playerBoard.fire(cShot.x(), cShot.y(), gs.computerTurnNumber);
+       updateComputerTargeting(gs, cShot, computerShot);
+       computerShots.add(new FireResponse.ComputerShot(cShot.x(), cShot.y(), computerShot, gs.computerTurnNumber));
 
       if (computerShot.allShipsSunk()) {
         gs.winner = "COMPUTER";
@@ -254,7 +255,8 @@ public final class GameService {
         computerFull,
         playerShotTurns,
         computerShotTurns,
-        gs.turnNumber,
+        gs.playerTurnNumber,
+        gs.computerTurnNumber,
         FleetRules.requiredCountsByLength(),
         gs.playerFleet.placedCounts(),
         gs.playerFleet.isComplete()
