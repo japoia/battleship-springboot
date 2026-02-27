@@ -101,11 +101,16 @@ public final class GameService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Game finished.");
     }
 
-     gs.playerTurnNumber++;
-      FireResult playerShot = gs.computerBoard.fire(req.x, req.y, gs.playerTurnNumber);
-     if (playerShot.outcome() == FireResult.Outcome.INVALID || playerShot.outcome() == FireResult.Outcome.ALREADY_SHOT) {
-       return new FireResponse(playerShot, List.of(), toState(gs));
-     }
+    // Check if cell was already shot before incrementing turn number
+    if (gs.computerBoard.wasShot(req.x, req.y)) {
+      return new FireResponse(new FireResult(FireResult.Outcome.ALREADY_SHOT, false, false), List.of(), toState(gs));
+    }
+
+    gs.playerTurnNumber++;
+    FireResult playerShot = gs.computerBoard.fire(req.x, req.y, gs.playerTurnNumber);
+    if (playerShot.outcome() == FireResult.Outcome.INVALID) {
+      return new FireResponse(playerShot, List.of(), toState(gs));
+    }
 
      if (playerShot.allShipsSunk()) {
        gs.winner = "PLAYER";
@@ -282,6 +287,16 @@ public final class GameService {
       if (maxX < Board.SIZE - 1) {
         q.addLast(new Coord(maxX + 1, shot.y()));
       }
+      
+      // Mark vertical neighbors as invalid (no need to shoot perpendicular)
+      for (Coord hit : existingHorizontalHits) {
+        if (hit.y() > 0) {
+          gs.computerInvalidCells.add(new Coord(hit.x(), hit.y() - 1));
+        }
+        if (hit.y() < Board.SIZE - 1) {
+          gs.computerInvalidCells.add(new Coord(hit.x(), hit.y() + 1));
+        }
+      }
     } else if (shipDirection == Orientation.V) {
       // Ship is vertical, target all possible up and down cells
       // First, find all existing vertical hits
@@ -314,6 +329,16 @@ public final class GameService {
       }
       if (maxY < Board.SIZE - 1) {
         q.addLast(new Coord(shot.x(), maxY + 1));
+      }
+      
+      // Mark horizontal neighbors as invalid (no need to shoot perpendicular)
+      for (Coord hit : existingVerticalHits) {
+        if (hit.x() > 0) {
+          gs.computerInvalidCells.add(new Coord(hit.x() - 1, hit.y()));
+        }
+        if (hit.x() < Board.SIZE - 1) {
+          gs.computerInvalidCells.add(new Coord(hit.x() + 1, hit.y()));
+        }
       }
     } else {
       // No clear direction, target all four directions
