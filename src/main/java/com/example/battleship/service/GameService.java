@@ -29,6 +29,7 @@ public final class GameService {
   public GameStateResponse newGame(HttpSession session) {
     GameSession gs = new GameSession();
     randomizeComputerFleet(gs);
+    gs.initializeStrategy();
     session.setAttribute(SESSION_KEY, gs);
     return toState(gs);
   }
@@ -154,6 +155,7 @@ public final class GameService {
 
     GameSession gs = new GameSession();
     randomizeComputerFleet(gs);
+    gs.initializeStrategy();
     session.setAttribute(SESSION_KEY, gs);
     return gs;
   }
@@ -198,181 +200,11 @@ public final class GameService {
   }
 
   private Coord pickComputerShot(GameSession gs) {
-    Deque<Coord> q = gs.computerTargetQueue;
-    while (!q.isEmpty()) {
-      Coord c = q.removeFirst();
-      if (gs.playerBoard.inBounds(c.x(), c.y()) && !gs.playerBoard.wasShot(c.x(), c.y()) && !gs.computerInvalidCells.contains(c)) {
-        return c;
-      }
-    }
-
-    // Improved AI: Target cells in checkerboard pattern to maximize coverage
-    for (int attempt = 0; attempt < 500; attempt++) {
-      int x = rnd.nextInt(Board.SIZE);
-      int y = rnd.nextInt(Board.SIZE);
-      // Prefer cells that form a checkerboard pattern (reduces misses)
-      if (!gs.playerBoard.wasShot(x, y) && (x + y) % 2 == 0 && !gs.computerInvalidCells.contains(new Coord(x, y))) {
-        return new Coord(x, y);
-      }
-    }
-
-    // Fallback to random if checkerboard pattern is full
-    for (int attempt = 0; attempt < 500; attempt++) {
-      int x = rnd.nextInt(Board.SIZE);
-      int y = rnd.nextInt(Board.SIZE);
-      if (!gs.playerBoard.wasShot(x, y) && !gs.computerInvalidCells.contains(new Coord(x, y))) {
-        return new Coord(x, y);
-      }
-    }
-
-    // Final fallback: scan the board
-    for (int y = 0; y < Board.SIZE; y++) {
-      for (int x = 0; x < Board.SIZE; x++) {
-        if (!gs.playerBoard.wasShot(x, y) && !gs.computerInvalidCells.contains(new Coord(x, y))) {
-          return new Coord(x, y);
-        }
-      }
-    }
-    return new Coord(0, 0); // should never happen
+    return gs.computerStrategy.pickBestShot();
   }
 
   private void updateComputerTargeting(GameSession gs, Coord shot, FireResult res) {
-    if (res.outcome() != FireResult.Outcome.HIT) return;
-    if (res.shipSunk()) {
-      // Find the sunk ship and mark all surrounding cells as invalid
-      var sunkShipOpt = gs.playerBoard.shipAt(shot.x(), shot.y());
-      if (sunkShipOpt.isPresent()) {
-        var sunkShip = sunkShipOpt.get();
-        markCellsAroundShipAsInvalid(gs, sunkShip);
-      }
-      gs.computerTargetQueue.clear();
-      return;
-    }
-
-    Deque<Coord> q = gs.computerTargetQueue;
-    
-    // Determine ship direction from existing hits
-    Orientation shipDirection = determineShipDirection(gs, shot);
-    
-    if (shipDirection == Orientation.H) {
-      // Ship is horizontal, target all possible left and right cells
-      // First, find all existing horizontal hits
-      List<Coord> existingHorizontalHits = new ArrayList<>();
-      existingHorizontalHits.add(shot);
-      
-      // Check left of current shot
-      int x = shot.x() - 1;
-      while (x >= 0 && gs.playerBoard.wasShot(x, shot.y()) && 
-             isHitCell(gs.playerBoard, x, shot.y())) {
-        existingHorizontalHits.add(new Coord(x, shot.y()));
-        x--;
-      }
-      
-      // Check right of current shot
-      x = shot.x() + 1;
-      while (x < Board.SIZE && gs.playerBoard.wasShot(x, shot.y()) && 
-             isHitCell(gs.playerBoard, x, shot.y())) {
-        existingHorizontalHits.add(new Coord(x, shot.y()));
-        x++;
-      }
-      
-      // Find the minimum and maximum x coordinates of horizontal hits
-      int minX = existingHorizontalHits.stream().mapToInt(Coord::x).min().orElse(shot.x());
-      int maxX = existingHorizontalHits.stream().mapToInt(Coord::x).max().orElse(shot.x());
-      
-      // Add cells to the left of minX and right of maxX
-      if (minX > 0) {
-        q.addLast(new Coord(minX - 1, shot.y()));
-      }
-      if (maxX < Board.SIZE - 1) {
-        q.addLast(new Coord(maxX + 1, shot.y()));
-      }
-      
-      // Mark vertical neighbors as invalid (no need to shoot perpendicular)
-      for (Coord hit : existingHorizontalHits) {
-        if (hit.y() > 0) {
-          gs.computerInvalidCells.add(new Coord(hit.x(), hit.y() - 1));
-        }
-        if (hit.y() < Board.SIZE - 1) {
-          gs.computerInvalidCells.add(new Coord(hit.x(), hit.y() + 1));
-        }
-      }
-    } else if (shipDirection == Orientation.V) {
-      // Ship is vertical, target all possible up and down cells
-      // First, find all existing vertical hits
-      List<Coord> existingVerticalHits = new ArrayList<>();
-      existingVerticalHits.add(shot);
-      
-      // Check above current shot
-      int y = shot.y() - 1;
-      while (y >= 0 && gs.playerBoard.wasShot(y, shot.x()) && 
-             isHitCell(gs.playerBoard, shot.x(), y)) {
-        existingVerticalHits.add(new Coord(shot.x(), y));
-        y--;
-      }
-      
-      // Check below current shot
-      y = shot.y() + 1;
-      while (y < Board.SIZE && gs.playerBoard.wasShot(y, shot.x()) && 
-             isHitCell(gs.playerBoard, shot.x(), y)) {
-        existingVerticalHits.add(new Coord(shot.x(), y));
-        y++;
-      }
-      
-      // Find the minimum and maximum y coordinates of vertical hits
-      int minY = existingVerticalHits.stream().mapToInt(Coord::y).min().orElse(shot.y());
-      int maxY = existingVerticalHits.stream().mapToInt(Coord::y).max().orElse(shot.y());
-      
-      // Add cells above minY and below maxY
-      if (minY > 0) {
-        q.addLast(new Coord(shot.x(), minY - 1));
-      }
-      if (maxY < Board.SIZE - 1) {
-        q.addLast(new Coord(shot.x(), maxY + 1));
-      }
-      
-      // Mark horizontal neighbors as invalid (no need to shoot perpendicular)
-      for (Coord hit : existingVerticalHits) {
-        if (hit.x() > 0) {
-          gs.computerInvalidCells.add(new Coord(hit.x() - 1, hit.y()));
-        }
-        if (hit.x() < Board.SIZE - 1) {
-          gs.computerInvalidCells.add(new Coord(hit.x() + 1, hit.y()));
-        }
-      }
-    } else {
-      // No clear direction, target all four directions
-      q.addLast(new Coord(shot.x() + 1, shot.y()));
-      q.addLast(new Coord(shot.x() - 1, shot.y()));
-      q.addLast(new Coord(shot.x(), shot.y() + 1));
-      q.addLast(new Coord(shot.x(), shot.y() - 1));
-    }
-  }
-  
-  private Orientation determineShipDirection(GameSession gs, Coord currentHit) {
-    // Check if there are any adjacent hits to determine ship direction
-    // Check horizontal neighbors
-    boolean hasLeftHit = gs.playerBoard.wasShot(currentHit.x() - 1, currentHit.y()) && 
-                        isHitCell(gs.playerBoard, currentHit.x() - 1, currentHit.y());
-    boolean hasRightHit = gs.playerBoard.wasShot(currentHit.x() + 1, currentHit.y()) && 
-                         isHitCell(gs.playerBoard, currentHit.x() + 1, currentHit.y());
-                         
-    if (hasLeftHit || hasRightHit) {
-      return Orientation.H;
-    }
-    
-    // Check vertical neighbors
-    boolean hasTopHit = gs.playerBoard.wasShot(currentHit.x(), currentHit.y() - 1) && 
-                       isHitCell(gs.playerBoard, currentHit.x(), currentHit.y() - 1);
-    boolean hasBottomHit = gs.playerBoard.wasShot(currentHit.x(), currentHit.y() + 1) && 
-                          isHitCell(gs.playerBoard, currentHit.x(), currentHit.y() + 1);
-                          
-    if (hasTopHit || hasBottomHit) {
-      return Orientation.V;
-    }
-    
-    // No adjacent hits, direction unknown
-    return null;
+    gs.computerStrategy.updateStrategy(shot, res);
   }
   
   private boolean isHitCell(Board board, int x, int y) {

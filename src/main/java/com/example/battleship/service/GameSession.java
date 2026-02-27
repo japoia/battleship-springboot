@@ -4,6 +4,7 @@ import com.example.battleship.game.Board;
 import com.example.battleship.game.Coord;
 import com.example.battleship.game.FleetTracker;
 import com.example.battleship.game.Phase;
+import com.example.battleship.game.ai.ComputerStrategy;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashSet;
@@ -21,10 +22,16 @@ public final class GameSession {
   public FleetTracker playerFleet = new FleetTracker();
   public FleetTracker computerFleet = new FleetTracker();
 
-  // Simple target-queue AI (neighbors after a hit).
+  // Enhanced AI strategy
   public Deque<Coord> computerTargetQueue = new ArrayDeque<>();
-  
-  // Set of invalid cells to avoid shooting (around sunk ships)
   public Set<Coord> computerInvalidCells = new HashSet<>();
+  public ComputerStrategy computerStrategy;
+
+  /**
+   * Initialize computer strategy.
+   */
+  public void initializeStrategy() {
+    this.computerStrategy = new ComputerStrategy(playerBoard, computerTargetQueue, computerInvalidCells);
+  }
 }
 
