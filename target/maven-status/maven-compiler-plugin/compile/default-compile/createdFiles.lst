@@ -15,6 +15,6 @@ com/example/battleship/game/FleetRules.class
 com/example/battleship/game/FleetTracker.class
 com/example/battleship/game/Ship.class
 com/example/battleship/service/dto/PlaceShipRequest.class
-com/example/battleship/game/Coord.class
 com/example/battleship/game/ai/RandomPlacer.class
+com/example/battleship/game/Coord.class
 com/example/battleship/service/dto/FireResponse.class
